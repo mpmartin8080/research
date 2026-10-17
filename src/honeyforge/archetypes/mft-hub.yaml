@@ -1,0 +1,97 @@
+# Managed file transfer hub. Signal tags are minted on load.
+version: 1
+name: mft-hub
+archetype: mft-hub
+persona:
+  org_name: Brackwell Logistics
+  role: Partner file transfer hub (EDI, invoices, payroll exports)
+  description: >-
+    Central MFT server exchanging EDI documents, invoices and payroll exports with
+    trading partners over SFTP/FTPS, with a web portal for partner self-service.
+  hostname: bw-mft-01
+  public_hostnames: [transfer.brackwell-logistics.example]
+  os_fingerprint: Ubuntu 20.04
+services:
+  - name: sftp
+    emulator: sftp_fs
+    protocol: sftp
+    listen_port: 2222
+    publish_port: 22
+    banner: SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11
+    vulns:
+      - kind: weak-credentials
+        params: {accounts: {partner01: partner01, edi: edi2023}}
+      - kind: fake-shell
+  - name: ftp
+    emulator: ftp_fs
+    protocol: ftp
+    listen_port: 2121
+    publish_port: 21
+    banner: 220 (vsFTPd 3.0.3)
+    vulns:
+      - kind: weak-credentials
+        params: {accounts: {anonymous: ""}}
+  - name: web-portal
+    emulator: mft_portal
+    protocol: https
+    listen_port: 8443
+    publish_port: 443
+    options: {product_banner: "SecureXfer Partner Portal 9.4"}
+    vulns:
+      - kind: sql-injection
+        description: login form "injection" yields a session into the fabricated portal
+      - kind: path-traversal
+        description: download endpoint serves files from the fabricated filesystem
+companions:
+  - name: partner-sftp
+    emulator: sftp_sink
+    protocol: sftp
+    listen_port: 2222
+  - name: notify-smtp
+    emulator: smtp_sink
+    protocol: smtp
+    listen_port: 2525
+outbound:
+  - name: partner-transfers
+    protocol: sftp
+    target: partner-sftp
+    port: 2222
+    interval_seconds: 900
+    payload_profile: edi-invoice-batch
+    signal: partner-transfers
+  - name: transfer-notifications
+    protocol: smtp
+    target: notify-smtp
+    port: 2525
+    interval_seconds: 900
+    payload_profile: transfer-receipt-email
+    signal: notification-mail
+signals:
+  - id: ct-cert
+    kind: ct-certificate
+    scope: internet
+    params: {names: [transfer.brackwell-logistics.example]}
+  - id: indexed-portal
+    kind: indexed-artifact
+    scope: internet
+    params: {artifact: public-status-page}
+  - id: partner-transfers
+    kind: backup-traffic
+    scope: on-path
+  - id: notification-mail
+    kind: ops-telemetry
+    scope: on-path
+  - id: cleartext-ftp
+    kind: cleartext-auth
+    scope: on-path
+    params: {protocol: ftp, account: edi}
+  - id: smb-advert
+    kind: service-advertisement
+    scope: L2
+    enabled: false  # needs network.mode macvlan/ipvlan on a Linux host
+    params: {service: _smb._tcp, instance: BW-MFT-01 Payroll}
+egress:
+  decoy_allow: []
+telemetry:
+  mode: https
+  endpoint: https://collector.internal.example/ingest

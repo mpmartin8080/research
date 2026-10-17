@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "honeyforge"
+version = "0.1.0"
+description = "Generate hardened, Claude-driven Docker honeypots that actively signal high-value targets"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+    "typer>=0.12",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+# Later phases: build/runtime integrations.
+runtime = ["anthropic", "docker", "jinja2", "structlog", "asyncssh", "cryptography"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+honeyforge = "honeyforge.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+honeyforge = ["archetypes/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,113 @@
+# AI tooling host: inference gateway + model ops. Signal tags are minted on load.
+version: 1
+name: ai-gateway
+archetype: ai-tools
+persona:
+  org_name: Corvane Labs
+  role: Internal LLM inference gateway and experiment tracking host
+  description: >-
+    GPU box serving fine-tuned models to internal teams via an OpenAI-compatible API,
+    with Ollama for local experimentation and MLflow for experiment tracking.
+  hostname: gpu-infer-03
+  public_hostnames: [infer.corvane-labs.example, mlflow.corvane-labs.example]
+  os_fingerprint: Ubuntu 22.04 (CUDA 12.4)
+services:
+  - name: openai-api
+    emulator: openai_api
+    protocol: https
+    listen_port: 8443
+    publish_port: 443
+    vulns:
+      - kind: unauthenticated-api
+        description: /v1/models and /v1/chat/completions accept any or no bearer token
+      - kind: info-disclosure
+        description: /.env and /debug/config leak canary provider keys
+  - name: ollama
+    emulator: ollama_api
+    protocol: http
+    listen_port: 11434
+    publish_port: 11434
+    vulns:
+      - kind: unauthenticated-api
+        description: /api/pull and /api/tags open to anyone
+  - name: mlflow
+    emulator: mlflow
+    protocol: http
+    listen_port: 5000
+    publish_port: 5000
+    vulns:
+      - kind: path-traversal
+        description: artifact download endpoint serves files from the fabricated filesystem
+  - name: jupyter
+    emulator: jupyter
+    protocol: http
+    listen_port: 8888
+    publish_port: 8888
+    vulns:
+      - kind: weak-credentials
+        params: {tokens: [password, jupyter]}
+  - name: ssh
+    emulator: ssh_shell
+    protocol: ssh
+    listen_port: 2222
+    publish_port: 22
+    banner: SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10
+    vulns:
+      - kind: weak-credentials
+        params: {accounts: {mlops: mlops123, ubuntu: ubuntu}}
+      - kind: fake-shell
+companions:
+  - name: model-registry
+    emulator: http_registry
+    protocol: https
+    listen_port: 8443
+  - name: exp-tracker
+    emulator: http_sink
+    protocol: https
+    listen_port: 8443
+outbound:
+  - name: model-pull
+    protocol: https
+    target: model-registry
+    port: 8443
+    interval_seconds: 3600
+    payload_profile: model-pull
+    signal: model-registry-pulls
+  - name: mcp-tool-calls
+    protocol: https
+    target: exp-tracker
+    port: 8443
+    interval_seconds: 300
+    payload_profile: mcp-sse
+    signal: mcp-traffic
+  - name: pip-index-check
+    protocol: https
+    target: pypi.org
+    port: 443
+    interval_seconds: 21600
+    payload_profile: pip-index
+signals:
+  - id: ct-cert
+    kind: ct-certificate
+    scope: internet
+    params: {names: [infer.corvane-labs.example, mlflow.corvane-labs.example]}
+  - id: leaked-provider-key
+    kind: honeytoken-leak
+    scope: internet
+    params: {destinations: [public-git-commit], token_type: llm-provider-key}
+  - id: model-registry-pulls
+    kind: ai-traffic
+    scope: on-path
+  - id: mcp-traffic
+    kind: ai-traffic
+    scope: on-path
+  - id: mdns-jupyter
+    kind: service-advertisement
+    scope: L2
+    enabled: false  # needs network.mode macvlan/ipvlan on a Linux host
+    params: {service: _http._tcp, instance: gpu-infer-03 jupyter}
+egress:
+  decoy_allow: [pypi.org, files.pythonhosted.org]
+telemetry:
+  mode: https
+  endpoint: https://collector.internal.example/ingest

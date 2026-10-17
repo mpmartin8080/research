@@ -1,0 +1,125 @@
+# Financial trading / settlement host. Signal tags are minted on load.
+version: 1
+name: fin-settlement
+archetype: financial
+persona:
+  org_name: Tallowmere Capital
+  role: Order routing gateway and end-of-day settlement server
+  description: >-
+    Routes client orders over FIX to an upstream venue, exposes a REST trading API to
+    internal desks, and pushes nightly settlement batches to a clearing partner.
+  hostname: tc-oms-prod-02
+  public_hostnames: [trade-api.tallowmere-capital.example]
+  os_fingerprint: Red Hat Enterprise Linux 8.9
+services:
+  - name: fix-gateway
+    emulator: fix_acceptor
+    protocol: fix
+    listen_port: 9876
+    publish_port: 9876
+    vulns:
+      - kind: weak-credentials
+        description: Logon (35=A) accepts default SenderCompID/password pairs
+  - name: trading-api
+    emulator: rest_trading
+    protocol: https
+    listen_port: 8443
+    publish_port: 443
+    vulns:
+      - kind: auth-bypass
+        description: X-Desk-Override header skips auth, returns fabricated positions
+  - name: admin-portal
+    emulator: admin_portal
+    protocol: http
+    listen_port: 8080
+    publish_port: 8080
+    vulns:
+      - kind: weak-credentials
+        params: {accounts: {admin: admin, ops: Settle2024!}}
+  - name: ledger-db
+    emulator: postgres_wire
+    protocol: postgres
+    listen_port: 5432
+    publish_port: 5432
+    vulns:
+      - kind: weak-credentials
+        params: {accounts: {postgres: postgres}}
+      - kind: sql-injection
+        description: any query returns rows from the fabricated ledger
+  - name: ssh
+    emulator: ssh_shell
+    protocol: ssh
+    listen_port: 2222
+    publish_port: 22
+    banner: SSH-2.0-OpenSSH_8.0
+    vulns:
+      - kind: weak-credentials
+        params: {accounts: {settle: settle}}
+      - kind: fake-shell
+companions:
+  - name: market-feed
+    emulator: market_data_feed
+    protocol: tcp
+    listen_port: 9100
+  - name: clearing-bank
+    emulator: sftp_sink
+    protocol: sftp
+    listen_port: 2222
+  - name: card-switch
+    emulator: iso8583_sink
+    protocol: tcp
+    listen_port: 8583
+outbound:
+  - name: market-data
+    protocol: tcp
+    target: market-feed
+    port: 9100
+    interval_seconds: 60
+    payload_profile: market-data-snapshot
+    signal: market-data-traffic
+  - name: settlement-push
+    protocol: sftp
+    target: clearing-bank
+    port: 2222
+    interval_seconds: 86400
+    payload_profile: nacha-batch
+    signal: settlement-files
+  - name: card-auth
+    protocol: tcp
+    target: card-switch
+    port: 8583
+    interval_seconds: 120
+    payload_profile: iso8583-auth-test-pan
+    signal: card-auth-traffic
+signals:
+  - id: ct-cert
+    kind: ct-certificate
+    scope: internet
+    params: {names: [trade-api.tallowmere-capital.example]}
+  - id: leaked-db-creds
+    kind: honeytoken-leak
+    scope: internet
+    params: {destinations: [public-git-commit], token_type: postgres-dsn}
+  - id: market-data-traffic
+    kind: finance-traffic
+    scope: on-path
+  - id: settlement-files
+    kind: finance-traffic
+    scope: on-path
+  - id: card-auth-traffic
+    kind: finance-traffic
+    scope: on-path
+  - id: cleartext-ftp-login
+    kind: cleartext-auth
+    scope: on-path
+    params: {protocol: ftp, account: settle}
+  - id: llmnr-bait
+    kind: name-resolution-bait
+    scope: L2
+    enabled: false  # needs network.mode macvlan/ipvlan on a Linux host
+    params: {names: [fileserver-fin, settlement-share]}
+egress:
+  decoy_allow: []
+telemetry:
+  mode: https
+  endpoint: https://collector.internal.example/ingest
