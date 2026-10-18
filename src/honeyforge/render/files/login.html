@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$title</title>
+<style>
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: #eef1f5; color: #1f2933; }
+  .card { max-width: 360px; margin: 12vh auto 0; background: #fff; border-radius: 6px;
+          box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 32px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 24px; color: #616e7c; font-size: 13px; }
+  label { display: block; font-size: 13px; margin: 12px 0 4px; }
+  input[type=text], input[type=password] { width: 100%; box-sizing: border-box; padding: 9px 10px;
+          border: 1px solid #cbd2d9; border-radius: 4px; font-size: 14px; }
+  button { margin-top: 20px; width: 100%; padding: 10px; border: 0; border-radius: 4px;
+           background: #2f5d8a; color: #fff; font-size: 14px; cursor: pointer; }
+  .err { background: #fdecea; color: #a61b1b; padding: 8px 10px; border-radius: 4px; font-size: 13px; }
+  footer { text-align: center; color: #9aa5b1; font-size: 11px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>$title</h1>
+  <p class="sub">$org &middot; $hostname</p>
+  <!--STARTERR--><div class="err">Invalid username or password.</div><!--ENDERR-->
+  <form method="POST">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" autocomplete="username">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+<footer>&copy; $org. Authorized use only.</footer>
+</body>
+</html>

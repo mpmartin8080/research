@@ -13,49 +13,35 @@ persona:
   os_fingerprint: Red Hat Enterprise Linux 8.9
 services:
   - name: fix-gateway
-    emulator: fix_acceptor
+    emulator: tcpbanner
     protocol: fix
     listen_port: 9876
     publish_port: 9876
-    vulns:
-      - kind: weak-credentials
-        description: Logon (35=A) accepts default SenderCompID/password pairs
   - name: trading-api
-    emulator: rest_trading
+    emulator: https
     protocol: https
     listen_port: 8443
     publish_port: 443
-    vulns:
-      - kind: auth-bypass
-        description: X-Desk-Override header skips auth, returns fabricated positions
+    banner: Apache/2.4.57 (Red Hat Enterprise Linux)
+    display_name: Desk Trading API
   - name: admin-portal
-    emulator: admin_portal
+    emulator: http
     protocol: http
     listen_port: 8080
     publish_port: 8080
-    vulns:
-      - kind: weak-credentials
-        params: {accounts: {admin: admin, ops: Settle2024!}}
+    display_name: Settlement Operations Console
   - name: ledger-db
-    emulator: postgres_wire
-    protocol: postgres
-    listen_port: 5432
-    publish_port: 5432
-    vulns:
-      - kind: weak-credentials
-        params: {accounts: {postgres: postgres}}
-      - kind: sql-injection
-        description: any query returns rows from the fabricated ledger
+    emulator: mssql
+    protocol: mssql
+    listen_port: 1433
+    publish_port: 1433
+    banner: "2019"
   - name: ssh
-    emulator: ssh_shell
+    emulator: ssh
     protocol: ssh
     listen_port: 2222
     publish_port: 22
     banner: SSH-2.0-OpenSSH_8.0
-    vulns:
-      - kind: weak-credentials
-        params: {accounts: {settle: settle}}
-      - kind: fake-shell
 companions:
   - name: market-feed
     emulator: market_data_feed

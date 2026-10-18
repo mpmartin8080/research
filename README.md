@@ -6,8 +6,9 @@ the honeypot emits **active signals** (CT certificates, leaked honeytokens, prot
 traffic, LAN advertisements) to test whether active signal mimicry attracts more
 attackers than passive exposure.
 
-Status: phase 1 (spec models, policy validator, CLI, archetypes). Runtime, image
-building, and the Claude controller are not implemented yet.
+Status: phases 1–2. Specs, policy validation, and a hardened OpenCanary decoy you can
+build and run. Telemetry shipping, egress allowlisting, the Claude controller, and
+signal emission are not implemented yet.
 
 ## Quick start
 
@@ -17,8 +18,32 @@ honeyforge archetypes
 honeyforge init-spec -a ai-tools -o my-gateway.yaml   # mints unique signal tags
 honeyforge validate my-gateway.yaml
 honeyforge twin my-gateway.yaml -o my-gateway-passive.yaml   # control arm, signals off
-pytest
+
+honeyforge build my-gateway.yaml          # renders out/my-gateway and builds images
+honeyforge up out/my-gateway
+honeyforge events out/my-gateway          # normalised JSON events
+honeyforge down out/my-gateway
+
+pytest                                                  # unit tests
+HONEYFORGE_INTEGRATION=1 pytest tests/integration       # builds and probes a live stack
 ```
+
+## Runtime layout
+
+Each honeypot is a compose project with two containers:
+
+- **netguard** owns the network namespace (published ports, hostname). At startup it
+  applies a default-deny OUTPUT policy (replies to inbound connections still flow),
+  then drops to `nobody` with an empty capability bounding set.
+- **decoy** runs [OpenCanary](https://github.com/thinkst/opencanary) (pinned) inside
+  netguard's namespace: non-root, read-only rootfs, no capabilities,
+  `no-new-privileges`, resource-limited. It cannot originate network connections or
+  change the firewall rules. Per-image SSH host keys and a TLS certificate with the
+  persona's subject are minted at build time, with persona-branded HTTP login skins.
+
+Services map to OpenCanary modules (`ssh`, `https`, `http`, `ftp`, `redis`, `mssql`,
+`tcpbanner`, and others; see `src/honeyforge/canary/modules.py`). OpenCanary is
+low-interaction: it logs connections and credential attempts but never grants access.
 
 ## Spec concepts
 

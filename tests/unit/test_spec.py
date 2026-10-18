@@ -40,14 +40,40 @@ def test_roundtrip_preserves_tags(ai, tmp_path):
 
 
 def test_vuln_cannot_be_real():
+    from honeyforge.spec.models import VulnSpec
     with pytest.raises(ValidationError):
-        load_archetype("ai-tools").services[0].vulns[0].__class__(kind="fake-shell", emulated=False)
+        VulnSpec(kind="fake-shell", emulated=False)
 
 
 def test_forbidden_execution_keys(ai):
     ai.services[0].options["passthrough"] = True
-    ai.services[1].vulns[0].params["exec"] = "/bin/sh"
     assert "real-execution" in codes(ai)
+
+
+def test_forbidden_keys_in_vuln_params(ai):
+    from honeyforge.spec.models import VulnSpec
+    ai.services[0].vulns.append(VulnSpec(kind="fake-shell", params={"exec": "/bin/sh"}))
+    assert "real-execution" in codes(ai)
+
+
+def test_unknown_emulator(ai):
+    ai.services[0].emulator = "openai_api"
+    assert "unknown-emulator" in codes(ai)
+
+
+def test_unknown_module_option(ai):
+    ai.services[0].options["skindir"] = "/etc"
+    assert "unknown-option" in codes(ai)
+
+
+def test_duplicate_single_instance_module(ai):
+    ai.services[1].emulator = "https"
+    assert "duplicate-module" in codes(ai)
+
+
+def test_multiple_tcpbanners_allowed(ai):
+    assert sum(s.emulator == "tcpbanner" for s in ai.services) >= 2
+    assert "duplicate-module" not in codes(ai)
 
 
 def test_privileged_listen_port(ai):

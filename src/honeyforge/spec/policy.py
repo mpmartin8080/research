@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from honeyforge.canary.modules import MAX_TCPBANNERS, MODULES
 from honeyforge.spec.models import HoneypotSpec, NetworkMode, SignalKind, SignalScope
 
 # Option/param keys that would imply real execution or passthrough of attacker input.
@@ -62,8 +63,8 @@ class Finding:
 
 def check_policy(spec: HoneypotSpec) -> list[Finding]:
     findings: list[Finding] = []
-    for check in (_check_services, _check_egress, _check_outbound, _check_signals, _check_secrets,
-                  _check_brands, _check_telemetry):
+    for check in (_check_services, _check_modules, _check_egress, _check_outbound, _check_signals,
+                  _check_secrets, _check_brands, _check_telemetry):
         findings.extend(check(spec))
     return findings
 
@@ -125,6 +126,33 @@ def _check_services(spec: HoneypotSpec) -> list[Finding]:
         for path, key in _walk_keys({"options": svc.options, "vulns": [v.params for v in svc.vulns]}):
             if str(key).lower() in FORBIDDEN_KEYS:
                 out.append(_err("real-execution", f"{svc.name}: {path} implies real execution/passthrough"))
+    return out
+
+
+def _check_modules(spec: HoneypotSpec) -> list[Finding]:
+    out: list[Finding] = []
+    used = Counter(s.emulator for s in spec.services)
+    for svc in spec.services:
+        module = MODULES.get(svc.emulator)
+        if module is None:
+            out.append(_err("unknown-emulator", f"{svc.name}: emulator {svc.emulator!r} is not a supported "
+                            f"OpenCanary module ({', '.join(sorted(MODULES))})"))
+            continue
+        for key in sorted(set(svc.options) - module.options):
+            out.append(_err("unknown-option", f"{svc.name}: option {key!r} is not valid for module {module.name!r}"))
+        if svc.vulns:
+            out.append(_warn("vulns-descriptive", f"{svc.name}: OpenCanary is low-interaction and logs attempts "
+                             "without granting access; declared vulns are descriptive only"))
+    for name, n in used.items():
+        module = MODULES.get(name)
+        if module and not module.multi and n > 1:
+            out.append(_err("duplicate-module", f"module {name!r} can only back one service (used {n} times)"))
+        if module and module.multi and n > MAX_TCPBANNERS:
+            out.append(_err("too-many-tcpbanners", f"at most {MAX_TCPBANNERS} tcpbanner services (got {n})"))
+    banners = [s for s in spec.services if s.emulator in ("http", "https") and s.banner]
+    if len({s.banner for s in banners}) > 1:
+        out.append(_warn("shared-http-banner", "http and https share one Server banner in OpenCanary; "
+                         f"using {banners[0].banner!r}"))
     return out
 
 

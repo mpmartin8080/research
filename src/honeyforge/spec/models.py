@@ -27,13 +27,25 @@ class Archetype(StrEnum):
 class Protocol(StrEnum):
     HTTP = "http"
     HTTPS = "https"
+    HTTP_PROXY = "http-proxy"
     SSH = "ssh"
     SFTP = "sftp"
     FTP = "ftp"
     FTPS = "ftps"
+    TELNET = "telnet"
     SMTP = "smtp"
     FIX = "fix"
     POSTGRES = "postgres"
+    MYSQL = "mysql"
+    MSSQL = "mssql"
+    MONGODB = "mongodb"
+    REDIS = "redis"
+    RDP = "rdp"
+    VNC = "vnc"
+    SIP = "sip"
+    GIT = "git"
+    NTP = "ntp"
+    TFTP = "tftp"
     TCP = "tcp"
     UDP = "udp"
 
@@ -60,11 +72,12 @@ class VulnSpec(_Model):
 
 class ServiceSpec(_Model):
     name: str = Field(pattern=SLUG)
-    emulator: str = Field(description="Emulator id in runtime/decoy, e.g. 'openai_api'")
+    emulator: str = Field(description="OpenCanary module, e.g. 'ssh', 'https', 'tcpbanner'")
     protocol: Protocol
     listen_port: int = Field(ge=1, le=65535, description="Port inside the container")
     publish_port: int | None = Field(default=None, ge=1, le=65535)
     banner: str | None = None
+    display_name: str | None = Field(default=None, description="Title shown on generated HTTP login skins")
     vulns: list[VulnSpec] = Field(default_factory=list)
     options: dict[str, Any] = Field(default_factory=dict)
 

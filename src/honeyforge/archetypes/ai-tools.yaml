@@ -12,50 +12,44 @@ persona:
   public_hostnames: [infer.corvane-labs.example, mlflow.corvane-labs.example]
   os_fingerprint: Ubuntu 22.04 (CUDA 12.4)
 services:
-  - name: openai-api
-    emulator: openai_api
+  - name: gateway
+    emulator: https
     protocol: https
     listen_port: 8443
     publish_port: 443
-    vulns:
-      - kind: unauthenticated-api
-        description: /v1/models and /v1/chat/completions accept any or no bearer token
-      - kind: info-disclosure
-        description: /.env and /debug/config leak canary provider keys
-  - name: ollama
-    emulator: ollama_api
-    protocol: http
-    listen_port: 11434
-    publish_port: 11434
-    vulns:
-      - kind: unauthenticated-api
-        description: /api/pull and /api/tags open to anyone
+    banner: nginx/1.24.0
+    display_name: Inference Gateway Console
   - name: mlflow
-    emulator: mlflow
+    emulator: http
     protocol: http
     listen_port: 5000
     publish_port: 5000
-    vulns:
-      - kind: path-traversal
-        description: artifact download endpoint serves files from the fabricated filesystem
+    display_name: MLflow Tracking Server
+  - name: ollama
+    emulator: tcpbanner
+    protocol: http
+    listen_port: 11434
+    publish_port: 11434
+    options:
+      datareceivedbanner: "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 17\r\n\r\nOllama is running"
   - name: jupyter
-    emulator: jupyter
+    emulator: tcpbanner
     protocol: http
     listen_port: 8888
     publish_port: 8888
-    vulns:
-      - kind: weak-credentials
-        params: {tokens: [password, jupyter]}
+    options:
+      datareceivedbanner: "HTTP/1.1 302 Found\r\nServer: TornadoServer/6.4\r\nLocation: /login?next=%2Ftree\r\nContent-Length: 0\r\n\r\n"
+  - name: job-queue
+    emulator: redis
+    protocol: redis
+    listen_port: 6379
+    publish_port: 6379
   - name: ssh
-    emulator: ssh_shell
+    emulator: ssh
     protocol: ssh
     listen_port: 2222
     publish_port: 22
     banner: SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10
-    vulns:
-      - kind: weak-credentials
-        params: {accounts: {mlops: mlops123, ubuntu: ubuntu}}
-      - kind: fake-shell
 companions:
   - name: model-registry
     emulator: http_registry

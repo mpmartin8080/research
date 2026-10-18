@@ -13,35 +13,24 @@ persona:
   os_fingerprint: Ubuntu 20.04
 services:
   - name: sftp
-    emulator: sftp_fs
+    emulator: ssh
     protocol: sftp
     listen_port: 2222
     publish_port: 22
     banner: SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11
-    vulns:
-      - kind: weak-credentials
-        params: {accounts: {partner01: partner01, edi: edi2023}}
-      - kind: fake-shell
   - name: ftp
-    emulator: ftp_fs
+    emulator: ftp
     protocol: ftp
     listen_port: 2121
     publish_port: 21
-    banner: 220 (vsFTPd 3.0.3)
-    vulns:
-      - kind: weak-credentials
-        params: {accounts: {anonymous: ""}}
+    banner: (vsFTPd 3.0.3)
   - name: web-portal
-    emulator: mft_portal
+    emulator: https
     protocol: https
     listen_port: 8443
     publish_port: 443
-    options: {product_banner: "SecureXfer Partner Portal 9.4"}
-    vulns:
-      - kind: sql-injection
-        description: login form "injection" yields a session into the fabricated portal
-      - kind: path-traversal
-        description: download endpoint serves files from the fabricated filesystem
+    banner: Microsoft-IIS/10.0
+    display_name: SecureXfer Partner Portal
 companions:
   - name: partner-sftp
     emulator: sftp_sink

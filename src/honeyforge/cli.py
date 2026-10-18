@@ -5,6 +5,9 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
+from honeyforge.builder import docker
+from honeyforge.events import parse_line
+from honeyforge.render import DEFAULT_BASE_IMAGE, DEFAULT_NETGUARD_IMAGE, render_project
 from honeyforge.spec import check_policy, dump_spec, load_spec
 from honeyforge.spec.loader import archetype_names, load_archetype
 from honeyforge.spec.policy import has_errors
@@ -82,6 +85,94 @@ def twin(
         raise typer.Exit(1)
     dump_spec(spec.passive_twin(), output)
     typer.echo(f"wrote {output}")
+
+
+def _render_or_exit(spec, outdir: Path, base_image: str, netguard_base: str = DEFAULT_NETGUARD_IMAGE) -> Path:
+    try:
+        return render_project(spec, outdir, base_image=base_image, netguard_base=netguard_base)
+    except (ValueError, NotImplementedError) as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(1)
+
+
+def _default_outdir(spec_path: Path) -> Path:
+    return Path("out") / spec_path.stem
+
+
+@app.command()
+def render(
+    spec_path: Path = typer.Argument(..., exists=True, dir_okay=False),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Build context dir (default out/<spec>)"),
+    base_image: str = typer.Option(DEFAULT_BASE_IMAGE, help="Base image (tag or repo@sha256 digest)"),
+) -> None:
+    """Render a spec into a Docker build context and compose project, without building."""
+    spec = _load_or_exit(spec_path)
+    compose_file = _render_or_exit(spec, output or _default_outdir(spec_path), base_image)
+    typer.echo(f"rendered {compose_file.parent}")
+
+
+@app.command()
+def build(
+    spec_path: Path = typer.Argument(..., exists=True, dir_okay=False),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Build context dir (default out/<spec>)"),
+    base_image: str = typer.Option(DEFAULT_BASE_IMAGE, help="Base image; pinned to its digest before building"),
+) -> None:
+    """Render a spec, pin the base image digest, and build the honeypot image."""
+    spec = _load_or_exit(spec_path)
+    try:
+        pinned = docker.pin_digest(base_image)
+        netguard_pinned = docker.pin_digest(DEFAULT_NETGUARD_IMAGE)
+        typer.echo(f"base images pinned: {pinned}, {netguard_pinned}")
+        compose_file = _render_or_exit(spec, output or _default_outdir(spec_path), pinned, netguard_pinned)
+        docker.compose(compose_file.parent, "build")
+    except docker.DockerError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(1)
+    typer.secho(f"built honeyforge/{spec.name}:latest ({compose_file.parent})", fg="green")
+
+
+def _compose_cmd(project: Path, *args: str) -> None:
+    if not (project / "compose.yaml").is_file():
+        typer.secho(f"{project} has no compose.yaml; run `honeyforge build` first", fg="red", err=True)
+        raise typer.Exit(1)
+    try:
+        docker.compose(project, *args)
+    except docker.DockerError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def up(project: Path = typer.Argument(..., file_okay=False)) -> None:
+    """Start a built honeypot (detached)."""
+    _compose_cmd(project, "up", "--detach", "--wait")
+
+
+@app.command()
+def down(project: Path = typer.Argument(..., file_okay=False),
+         volumes: bool = typer.Option(False, "--volumes", help="Also delete the event volume")) -> None:
+    """Stop and remove a running honeypot."""
+    _compose_cmd(project, "down", *(["--volumes"] if volumes else []))
+
+
+@app.command()
+def events(project: Path = typer.Argument(..., file_okay=False),
+           include_boot: bool = typer.Option(False, help="Include OpenCanary startup/system events")) -> None:
+    """Print a running honeypot's events as normalised JSON lines."""
+    lock = project / "spec.lock.yaml"
+    if not lock.is_file():
+        typer.secho(f"{lock} not found", fg="red", err=True)
+        raise typer.Exit(1)
+    spec = load_spec(lock)
+    try:
+        raw = docker.compose(project, "logs", "--no-color", "--no-log-prefix", "decoy", capture=True)
+    except docker.DockerError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(1)
+    for line in raw.splitlines():
+        event = parse_line(line, spec)
+        if event and (include_boot or event.is_interaction):
+            typer.echo(event.model_dump_json())
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ honeyforge = "honeyforge.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-honeyforge = ["archetypes/*.yaml"]
+honeyforge = ["archetypes/*.yaml", "render/files/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
